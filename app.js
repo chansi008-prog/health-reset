@@ -188,11 +188,15 @@ function header() {
 
 // 로그인 / 가입 / 비밀번호 찾기
 const fld = (id, label, attrs = "") => `<div class="lbl">${label}</div><input class="inp" id="${id}" ${attrs}>`;
+const lastId = () => { try { return JSON.parse(localStorage.getItem("hr-last") || "{}"); } catch { return {}; } };
+const saveId = (name, tail) => { try { localStorage.setItem("hr-last", JSON.stringify({ name, tail })); } catch {} };
+function inApp() { return /KAKAOTALK|NAVER|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent); }
 function vLogin() {
-  return `<div class="card">
+  const L = lastId();
+  return `${inApp() ? `<div class="warnbox">카톡 등 앱 안의 브라우저에서는 로그인이 유지되지 않을 수 있어요. 오른쪽 위(또는 아래) 메뉴 → <b>다른 브라우저로 열기</b> 후 <b>홈 화면에 추가</b>해서 쓰세요.</div>` : ""}<div class="card">
     <div class="h mb">로그인</div>
-    ${fld("li-name", "이름", 'maxlength="8" autocomplete="off"')}
-    ${fld("li-tail", "전화번호 뒷자리 4개", 'inputmode="numeric" maxlength="4" pattern="[0-9]*"')}
+    ${fld("li-name", "이름", `maxlength="8" autocomplete="off" value="${esc(L.name || "")}"`)}
+    ${fld("li-tail", "전화번호 뒷자리 4개", `inputmode="numeric" maxlength="4" pattern="[0-9]*" value="${esc(L.tail || "")}"`)}
     ${fld("li-pin", "비밀번호 (숫자 6자리)", 'type="password" inputmode="numeric" maxlength="6" pattern="[0-9]*"')}
     <div class="err" id="li-err"></div>
     <button class="btn g" data-act="login">로그인</button>
@@ -539,7 +543,7 @@ async function doLogin() {
   if (!okName(name) || !okTail(tail) || !okPin(pin)) return errTo("li-err", "이름, 뒷자리 4개, 비밀번호 6자리를 확인해 주세요.");
   const key = acctKey(name, tail), a = await get(`acct/${key}`);
   if (!a) return errTo("li-err", "가입된 정보가 없어요. 이름과 뒷자리를 확인해 주세요.");
-  try { await auth.signIn(emailOf(key, a.k || 0), pin); }
+  try { await auth.signIn(emailOf(key, a.k || 0), pin); saveId(name, tail); }
   catch { errTo("li-err", "비밀번호가 맞지 않아요."); }
 }
 async function doSignup() {
@@ -553,6 +557,7 @@ async function doSignup() {
   try {
     S.pendingCode = code;
     const uid = await auth.signUp(emailOf(key, 0), pin);
+    saveId(name, tail);
     await update({ [`auth/${uid}`]: uid, [`users/${uid}`]: { name, tail, at: TS, uid }, [`acct/${key}`]: { pid: uid, k: 0 } });
   } catch (e) {
     console.error(e);
