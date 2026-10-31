@@ -513,6 +513,21 @@ async function showDay(pid, d) {
 function openSheet(html) { closeSheet(); const m = document.createElement("div"); m.className = "mask"; m.innerHTML = `<div class="sheet">${html}</div>`; m.addEventListener("click", e => { if (e.target === m) closeSheet(); }); document.body.append(m); }
 function closeSheet() { document.querySelectorAll(".mask").forEach(m => m.remove()); }
 
+
+// 브라우저 기본 창(confirm/prompt) 대신 앱 안의 확인·입력 창 (일부 브라우저는 기본 창을 막음)
+function ask(msg, { input = null, ok = "확인", danger = false } = {}) {
+  return new Promise(res => {
+    openSheet(`<div class="h" style="white-space:pre-line">${esc(msg)}</div>
+      ${input !== null ? `<input class="inp mt" id="ask-in" maxlength="12" value="${esc(input)}">` : ""}
+      <div class="row mt"><button class="btn ${danger ? "" : "g"}" style="flex:1" id="ask-ok">${ok}</button><button class="btn l" style="flex:.6" id="ask-no">취소</button></div>`);
+    const done = v => { closeSheet(); res(v); };
+    $("#ask-ok").onclick = () => done(input !== null ? $("#ask-in").value.trim() : true);
+    $("#ask-no").onclick = () => done(input !== null ? null : false);
+    document.querySelector(".mask").onclick = e => { if (e.target.classList.contains("mask")) done(input !== null ? null : false); };
+    if (input !== null) setTimeout(() => $("#ask-in") && $("#ask-in").focus(), 50);
+  });
+}
+
 // ── 동작 ──
 const val = id => ($("#" + id) ? $("#" + id).value.trim() : "");
 const errTo = (id, msg) => { const el = $("#" + id); if (el) el.textContent = msg; else toast(msg); };
@@ -602,7 +617,7 @@ async function watchResetWait() {
 async function approveReset(pid) {
   const r = S.resets[pid], u = S.users[pid];
   if (!r || !u) return;
-  if (!confirm(`${u.name}(${u.tail})님의 비밀번호 재설정을 승인할까요?\n본인 확인을 하셨나요?`)) return;
+  if (!(await ask(`${u.name}(${u.tail})님의 비밀번호 재설정을 승인할까요?\n본인 확인을 하셨나요?`, { ok: "승인" }))) return;
   const o = { [`auth/${r.uid}`]: pid, [`users/${pid}/uid`]: r.uid, [`acct/${acctKey(u.name, u.tail)}/k`]: r.k, [`resets/${pid}`]: null };
   if (u.uid && u.uid !== r.uid) o[`auth/${u.uid}`] = null;
   await update(o); toast("승인했어요");
@@ -652,7 +667,7 @@ document.addEventListener("click", async e => {
       case "logout": unsubAll(); await auth.signOut(); S.view = "login"; break;
       case "cancel-wait": localStorage.removeItem("hr-reset-pid"); unsubAll(); await auth.signOut(); S.view = "login"; break;
       case "become-super":
-        if (!confirm("총관리자로 시작할까요? 이 버튼은 한 번만 쓸 수 있어요.")) return;
+        if (!(await ask("총관리자로 시작할까요?\n이 버튼은 한 번만 쓸 수 있어요.", { ok: "시작" }))) return;
         await set("meta/super", S.pid); toast("총관리자가 되었어요! 관리 탭에서 그룹을 만드세요."); S.tab = "admin"; break;
       case "join": b.disabled = true; await useCode(val("jn-code"), d.cid, "jn-err"); b.disabled = false; break;
       case "claim": await claimInvite(val("inv-code"), null); break;
@@ -670,14 +685,14 @@ document.addEventListener("click", async e => {
       case "view-group": S.viewGid = d.gid; followGroup(); render(); break;
       case "grid-mode": S.gridMode = d.m; render(); break;
       case "reset-ok": await approveReset(d.pid); break;
-      case "reset-no": if (confirm("이 요청을 거절할까요?")) { await remove(`resets/${d.pid}`); toast("거절했어요"); } break;
+      case "reset-no": if (await ask("이 요청을 거절할까요?", { ok: "거절", danger: true })) { await remove(`resets/${d.pid}`); toast("거절했어요"); } break;
       case "cycle-new": S.cycEdit = null; render(); break;
       case "cycle-edit": S.cycEdit = d.cid; render(); break;
       case "cycle-cancel": S.cycEdit = undefined; render(); break;
       case "cycle-save": await saveCycle(); break;
       case "group-new": await newGroup(); break;
       case "group-rename": {
-        const nm = (prompt("새 그룹 이름", (S.groups[d.gid] || {}).name || "") || "").trim();
+        const nm = await ask("새 그룹 이름", { input: (S.groups[d.gid] || {}).name || "", ok: "바꾸기" });
         if (nm) { await set(`groups/${d.gid}/name`, nm.slice(0, 12)); toast("그룹 이름을 바꿨어요"); }
         break;
       }
@@ -690,9 +705,9 @@ document.addEventListener("click", async e => {
       }
       case "admin-pick": S.pickAdmin = S.pickAdmin === d.gid ? null : d.gid; S.openRoster = d.gid; loadAdminMembers(d.gid); render(); break;
       case "admin-on": await update({ [`adminOf/${d.pid}/${d.gid}`]: true, [`groups/${d.gid}/admins/${d.pid}`]: true }); toast(`${userName(d.pid)}님을 관리자로 지정했어요`); break;
-      case "admin-off": if (confirm(`${userName(d.pid)}님의 관리자를 해제할까요?`)) { await update({ [`adminOf/${d.pid}/${d.gid}`]: null, [`groups/${d.gid}/admins/${d.pid}`]: null }); toast("해제했어요"); } break;
+      case "admin-off": if (await ask(`${userName(d.pid)}님의 관리자를 해제할까요?`, { ok: "해제", danger: true })) { await update({ [`adminOf/${d.pid}/${d.gid}`]: null, [`groups/${d.gid}/admins/${d.pid}`]: null }); toast("해제했어요"); } break;
       case "kick":
-        if (!confirm(`${userName(d.pid)}님을 이번 회차 명단에서 뺄까요?\n기록은 남아 있어요.`)) return;
+        if (!(await ask(`${userName(d.pid)}님을 이번 회차 명단에서 뺄까요?\n기록은 남아 있어요.`, { ok: "빼기", danger: true }))) return;
         await update({ [`members/${S.cid}/${d.gid}/${d.pid}`]: null, [`memberOf/${S.cid}/${d.pid}`]: null });
         toast(`${userName(d.pid)}님을 명단에서 뺐어요. 다시 그룹 코드로 참가할 수 있어요.`); break;
     }
