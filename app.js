@@ -13,7 +13,7 @@ const dayFromInput = s => { const [y, m, dd] = s.split("-").map(Number); return 
 const inputFromDay = d => dDate(d).toISOString().slice(0, 10);
 const hhmm = ms => { const t = new Date(ms + KST); return `${String(t.getUTCHours()).padStart(2, "0")}:${String(t.getUTCMinutes()).padStart(2, "0")}`; };
 
-const IC = n => `<img class="ic" src="icons/${n}.svg" alt="">`;
+const IC = n => `<img class="ic" src="icons/${n}.png" alt="">`;
 const ITEMS = [["m", IC("gm"), "것모닝"], ["l", "🍱", "점심식사"], ["n", IC("gn"), "것나잇"], ["e", "🏃", "운동"]];
 const MAX_ADMINS = 10;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -401,7 +401,7 @@ function vMyInfo() {
     <div class="row mt"><b>${esc(S.me ? S.me.name : "")} <span class="note">(${esc(S.me ? S.me.tail : "")})</span></b>${isSuper() ? `<span class="pill k">총관리자</span>` : isAdmin() ? `<span class="pill g">관리자</span>` : ""}</div>
     <details class="mt"><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v8</div></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v9</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
