@@ -96,7 +96,11 @@ async function boot() {
       startData();
     });
   });
-  setInterval(() => { const t = today(); if (t !== S._lastDay) { S._lastDay = t; if (S.pid) { pickCycles(); followCycle(); } render(); } }, 30e3);
+  // 날짜가 바뀌면(자정) 회차 상태를 다시 계산. 폰에서 앱을 다시 열었을 때도 바로 확인한다
+  const dayCheck = () => { const t = today(); if (t !== S._lastDay) { S._lastDay = t; if (S.pid) { pickCycles(); followCycle(); followGroup(); } render(); } };
+  setInterval(dayCheck, 30e3);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) dayCheck(); });
+  addEventListener("pageshow", dayCheck); addEventListener("focus", dayCheck);
   S._lastDay = today();
 }
 

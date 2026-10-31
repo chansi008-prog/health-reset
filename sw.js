@@ -1,5 +1,5 @@
 // 건강 Reset 서비스 워커: 앱 화면 파일만 저장 (기록은 Firebase로 주고받음). 새 버전이 있으면 먼저 받는다.
-const VERSION = "hreset-v5";
+const VERSION = "hreset-v6";
 const CORE = ["./", "index.html", "app.js", "store.js", "config.js", "style.css", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-touch.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
