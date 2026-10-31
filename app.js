@@ -13,7 +13,8 @@ const dayFromInput = s => { const [y, m, dd] = s.split("-").map(Number); return 
 const inputFromDay = d => dDate(d).toISOString().slice(0, 10);
 const hhmm = ms => { const t = new Date(ms + KST); return `${String(t.getUTCHours()).padStart(2, "0")}:${String(t.getUTCMinutes()).padStart(2, "0")}`; };
 
-const ITEMS = [["m", "🌅", "것모닝"], ["l", "🍱", "점심식사"], ["n", "🌙", "것나잇"], ["e", "🏃", "운동"]];
+const IC = n => `<img class="ic" src="icons/${n}.svg" alt="">`;
+const ITEMS = [["m", IC("gm"), "것모닝"], ["l", "🍱", "점심식사"], ["n", IC("gn"), "것나잇"], ["e", "🏃", "운동"]];
 const MAX_ADMINS = 10;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const hex = s => Array.from(new TextEncoder().encode(s)).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -120,7 +121,14 @@ function followCycle() {
 }
 function followGroup() {
   const gids = Object.keys(S.groups || {});
-  if (!S.viewGid || (!isAdmin() && S.viewGid !== S.myGid)) S.viewGid = S.myGid || myAdminGids()[0] || (isSuper() ? gids[0] : null) || null;
+  // 보는 팀: 직접 고르기 전에는 항상 내 팀 (관리자도)
+  if ((!S.viewPicked && S.myGid) || !S.viewGid || (!isAdmin() && S.viewGid !== S.myGid)) S.viewGid = S.myGid || myAdminGids()[0] || (isSuper() ? gids[0] : null) || null;
+  // 내 기록은 보는 팀과 상관없이 내 팀에서
+  const mg = S.myGid, c0 = S.cid;
+  sub("myChecks", mg && c0 ? `checks/${c0}/${mg}/${S.pid}` : null, v => { S.myChecks = v || {}; render(); });
+  sub("myThumb", mg && c0 ? `thumbs/${c0}/${mg}/${today()}/${S.pid}` : null, v => { S.myThumb = v; render(); });
+  sub("myMember", mg && c0 ? `members/${c0}/${mg}/${S.pid}` : null, v => { S.myMember = v; render(); });
+  if (!mg) { S.myChecks = {}; S.myThumb = null; S.myMember = null; }
   const g = S.viewGid, c = S.cid;
   sub("members", g && c ? `members/${c}/${g}` : null, v => { S.members = v || {}; render(); });
   sub("checks", g && c && (S.myGid === g || isAdmin()) ? `checks/${c}/${g}` : null, v => { S.checks = v || {}; render(); });
@@ -137,6 +145,8 @@ function followAdmin() {
 }
 
 // ── 기록 계산 ──
+const myC = () => ({ [S.pid]: S.myChecks || {} });
+const myM = () => (S.myMember ? { [S.pid]: S.myMember } : {});
 const validAt = (ts, d) => typeof ts === "number" && dayOf(ts) === d;
 function dayCount(pid, d, checks = S.checks) {
   const r = ((checks[pid] || {})[d]) || {};
@@ -284,11 +294,11 @@ function vToday() {
     <button class="btn w mt" data-act="tab" data-t="admin">관리 탭으로</button></div>
     <details class="card"><summary class="note">나도 한 팀에 참가해서 인증하기</summary><div class="mt">${vJoin(S.cid)}</div></details>`;
   if (!S.myGid) return out + vJoin(S.cid) + (isAdmin() ? `<div class="note center">관리 탭에서 그룹과 회차를 설정할 수 있어요.</div>` : "");
-  const mine = ((S.checks[S.pid] || {})[d]) || {};
+  const mine = ((S.myChecks || {})[d]) || {};
   const can = st === "active";
   const n = ITEMS.filter(([k]) => validAt(mine[k], d)).length;
-  const th = S.thumbsToday[S.pid];
-  const ps = personStats(S.pid, c);
+  const th = S.myThumb;
+  const ps = personStats(S.pid, c, myC(), myM());
   out += `<div class="h" style="margin:2px 4px 10px">${esc(userName(S.pid))}님, ${can ? "오늘도 화이팅! 💪" : st === "recruit" ? `${md(c.s)}부터 시작해요!` : "수고하셨어요!"}</div>
   <div class="card">
     <div class="row mb"><span class="h">오늘의 체크</span><span class="done">${n} / 4</span></div>
@@ -340,7 +350,7 @@ function vGroup() {
           ${th && validAt(th.t, d) ? `<button class="ph sq" data-act="photo" data-pid="${p}" data-day="${d}"><img src="${th.th}" alt=""></button>` : `<div class="ph sq empty" style="font-size:11px">－</div>`}</div>`;
       }).join("") : `<div class="note center" style="padding:14px">아직 참가자가 없어요.</div>`}
     </div>
-    <div class="note center">🌅 것모닝 · 🍱 점심 · 🌙 것나잇 · 🏃 운동 · 오른쪽은 오늘 사진</div>`;
+    <div class="note center">${ITEMS.map(([, e, t]) => `<span style="white-space:nowrap">${e} ${t}</span>`).join(" · ")} · 오른쪽은 오늘 사진</div>`;
 }
 
 // 전체 표 · 순위
@@ -368,11 +378,11 @@ function vGrid() {
 function vMine() {
   const c = cyc(S.cid);
   if (!S.myGid || !c) return `<div class="card note center">${isSuper() ? "총관리자는 팀에 가입하지 않아 내 기록이 없어요." : "참가한 회차가 없어요."}</div>` + vMyInfo();
-  const ps = personStats(S.pid, c), t = today();
+  const ps = personStats(S.pid, c, myC(), myM()), t = today();
   const cells = [];
   for (let i = 0; i < dow(c.s); i++) cells.push(`<div class="c out"></div>`);
   for (let d = c.s; d <= c.e; d++) {
-    const n = dayCount(S.pid, d), cls = d > t ? "fut" : n === 4 ? "full" : n > 0 ? "half" : "";
+    const n = dayCount(S.pid, d, myC()), cls = d > t ? "fut" : n === 4 ? "full" : n > 0 ? "half" : "";
     cells.push(`<button class="c ${cls}${d === t ? " today" : ""}" data-act="cell" data-pid="${S.pid}" data-day="${d}" ${d > t ? "disabled" : ""}>${dDate(d).getUTCDate()}</button>`);
   }
   return `<div class="stats">
@@ -391,13 +401,13 @@ function vMyInfo() {
     <div class="row mt"><b>${esc(S.me ? S.me.name : "")} <span class="note">(${esc(S.me ? S.me.tail : "")})</span></b>${isSuper() ? `<span class="pill k">총관리자</span>` : isAdmin() ? `<span class="pill g">관리자</span>` : ""}</div>
     <details class="mt"><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v8</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
   if (!c || !S.myGid) return;
   const last = Math.min(today(), c.e), ds = [];
-  for (let d = last; d >= c.s; d--) if (hasPhoto(S.pid, d)) ds.push(d);
+  for (let d = last; d >= c.s; d--) if (hasPhoto(S.pid, d, myC())) ds.push(d);
   if (!ds.length) { S.myGal = `<div class="note">아직 올린 사진이 없어요.</div>`; render(); return; }
   const ths = await Promise.all(ds.map(d => get(`thumbs/${S.cid}/${S.myGid}/${d}/${S.pid}`)));
   S.myGal = ds.map((d, i) => ths[i] ? `<button class="ph" data-act="photo" data-pid="${S.pid}" data-day="${d}"><img src="${ths[i].th}" alt="${md(d)}"></button>` : "").join("");
@@ -503,7 +513,7 @@ async function upload(file) {
   } catch (e) { console.error(e); toast("사진을 올리지 못했어요. 다시 시도해 주세요."); }
 }
 async function showPhoto(pid, d) {
-  const g = S.viewGid && S.members[pid] ? S.viewGid : S.myGid;
+  const g = pid === S.pid ? S.myGid : S.viewGid;
   openSheet(`<div class="row mb"><b>${esc(userName(pid))} · ${md(d)}</b><button data-act="close">✕</button></div><div class="note center">불러오는 중…</div>`);
   const p = await get(`photos/${S.cid}/${g}/${d}/${pid}`);
   const th = p ? null : await get(`thumbs/${S.cid}/${g}/${d}/${pid}`);
@@ -511,11 +521,12 @@ async function showPhoto(pid, d) {
     ${p ? `<img class="full" src="${p.img}" alt=""><div class="note mt">${hhmm(p.t)} 올림</div>` : th ? `<img class="full" src="${th.th}" alt=""><div class="note mt">원본 사진은 보관 기간이 지나 썸네일만 남아 있어요.</div>` : `<div class="note">사진이 없어요.</div>`}`);
 }
 async function showDay(pid, d) {
-  const g = S.viewGid && S.members[pid] ? S.viewGid : S.myGid;
-  const r = ((S.checks[pid] || {})[d]) || {};
-  const th = hasPhoto(pid, d) ? await get(`thumbs/${S.cid}/${g}/${d}/${pid}`) : null;
+  const g = pid === S.pid ? S.myGid : S.viewGid;
+  const src = pid === S.pid ? myC() : S.checks;
+  const r = ((src[pid] || {})[d]) || {};
+  const th = hasPhoto(pid, d, src) ? await get(`thumbs/${S.cid}/${g}/${d}/${pid}`) : null;
   openSheet(`<div class="row mb"><b>${esc(userName(pid))} · ${md(d)} (${"일월화수목금토"[dow(d)]})</b><button data-act="close" style="font-size:20px">✕</button></div>
-    ${ITEMS.map(([k, e, t]) => `<div class="li"><span style="font-size:20px">${e}</span><span class="grow">${t}</span>${validAt(r[k], d) ? `<span class="done">✓ ${hhmm(r[k])}</span>` : `<span class="note">－</span>`}</div>`).join("")}
+    ${ITEMS.map(([k, e, t]) => `<div class="li"><span class="dayic">${e}</span><span class="grow">${t}</span>${validAt(r[k], d) ? `<span class="done">✓ ${hhmm(r[k])}</span>` : `<span class="note">－</span>`}</div>`).join("")}
     ${th ? `<button class="ph mt" style="width:100%;height:200px" data-act="photo" data-pid="${pid}" data-day="${d}"><img src="${th.th}" alt=""></button>` : ""}`);
 }
 function openSheet(html) { closeSheet(); const m = document.createElement("div"); m.className = "mask"; m.innerHTML = `<div class="sheet">${html}</div>`; m.addEventListener("click", e => { if (e.target === m) closeSheet(); }); document.body.append(m); }
@@ -682,7 +693,7 @@ document.addEventListener("click", async e => {
       case "claim": await claimInvite(val("inv-code"), null); break;
       case "check": {
         const k = d.k, day = today(), path = `checks/${S.cid}/${S.myGid}/${S.pid}/${day}/${k}`;
-        const cur = (((S.checks[S.pid] || {})[day]) || {})[k];
+        const cur = (((S.myChecks || {})[day]) || {})[k];
         await set(path, validAt(cur, day) ? null : TS);
         break;
       }
@@ -691,7 +702,7 @@ document.addEventListener("click", async e => {
       case "person": S.tab = "grid"; render(); break;
       case "close": closeSheet(); break;
       case "tab": S.tab = d.t; if (S.tab === "admin") loadAllMemberOf(); render(); scrollTo(0, 0); break;
-      case "view-group": S.viewGid = d.gid; followGroup(); render(); break;
+      case "view-group": S.viewGid = d.gid; S.viewPicked = true; followGroup(); render(); break;
       case "grid-mode": S.gridMode = d.m; render(); break;
       case "reset-ok": await approveReset(d.pid); break;
       case "reset-no": if (await ask("이 요청을 거절할까요?", { ok: "거절", danger: true })) { await remove(`resets/${d.pid}`); toast("거절했어요"); } break;
@@ -725,7 +736,7 @@ document.addEventListener("click", async e => {
 document.addEventListener("change", e => {
   const i = e.target;
   if (i.dataset && i.dataset.actChange === "upload") { upload(i.files[0]); i.value = ""; }
-  if (i.dataset && i.dataset.actChange === "view-group") { S.viewGid = i.value; followGroup(); render(); }
+  if (i.dataset && i.dataset.actChange === "view-group") { S.viewGid = i.value; S.viewPicked = true; followGroup(); render(); }
 });
 document.addEventListener("toggle", e => {
   const t = e.target;

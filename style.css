@@ -82,3 +82,9 @@ main{padding:14px 14px calc(96px + env(safe-area-inset-bottom))}
 .center{text-align:center}
 .mt{margin-top:10px}.mb{margin-bottom:10px}
 .test{background:#fff3c4;color:#7a5b00;font-size:12px;font-weight:800;text-align:center;padding:5px}
+.ic{width:1.35em;height:1.35em;vertical-align:middle;display:inline-block}
+.ckb em .ic{width:38px;height:38px;margin:-6px 0}
+.ck .ic{width:20px;height:20px}
+.ck.no .ic{opacity:.6}
+.dayic{font-size:20px;width:30px;text-align:center}.dayic .ic{width:30px;height:30px}
+.note .ic{width:18px;height:18px}
