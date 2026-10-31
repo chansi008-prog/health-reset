@@ -625,11 +625,10 @@ async function newGroup() {
   $("#new-group").value = ""; toast(`${name} 만들었어요 · 코드 ${code}`);
   followAdmin();
 }
-async function loadAdminMembers(gid) {
+function loadAdminMembers(gid) {
+  // 펼친 그룹의 명단은 실시간 구독 (다시 그릴 때마다 새로 불러오지 않게)
   if (!S.cid) return;
-  const m = await get(`members/${S.cid}/${gid}`);
-  S.adminMembers = Object.assign(S.adminMembers || {}, { [gid]: m || {} });
-  render();
+  sub("roster", `members/${S.cid}/${gid}`, v => { S.adminMembers = Object.assign(S.adminMembers || {}, { [gid]: v || {} }); render(); });
 }
 async function loadAllMemberOf() {
   const o = {};
@@ -689,13 +688,13 @@ document.addEventListener("click", async e => {
         await set(`invites/${code}`, { gid: d.gid, exp: now() + DAY, by: S.pid });
         S.inviteShow = { gid: d.gid, code }; render(); break;
       }
-      case "admin-pick": S.pickAdmin = S.pickAdmin === d.gid ? null : d.gid; S.openRoster = d.gid; await loadAdminMembers(d.gid); break;
+      case "admin-pick": S.pickAdmin = S.pickAdmin === d.gid ? null : d.gid; S.openRoster = d.gid; loadAdminMembers(d.gid); render(); break;
       case "admin-on": await update({ [`adminOf/${d.pid}/${d.gid}`]: true, [`groups/${d.gid}/admins/${d.pid}`]: true }); toast(`${userName(d.pid)}님을 관리자로 지정했어요`); break;
       case "admin-off": if (confirm(`${userName(d.pid)}님의 관리자를 해제할까요?`)) { await update({ [`adminOf/${d.pid}/${d.gid}`]: null, [`groups/${d.gid}/admins/${d.pid}`]: null }); toast("해제했어요"); } break;
       case "kick":
         if (!confirm(`${userName(d.pid)}님을 이번 회차 명단에서 뺄까요?\n기록은 남아 있어요.`)) return;
         await update({ [`members/${S.cid}/${d.gid}/${d.pid}`]: null, [`memberOf/${S.cid}/${d.pid}`]: null });
-        await loadAdminMembers(d.gid); toast("명단에서 뺐어요"); break;
+        toast(`${userName(d.pid)}님을 명단에서 뺐어요. 다시 그룹 코드로 참가할 수 있어요.`); break;
     }
   } catch (err) { console.error(err); toast("처리하지 못했어요: " + (err.code || err.message || "")); b.disabled = false; }
 });
@@ -704,7 +703,12 @@ document.addEventListener("change", e => {
   if (i.dataset && i.dataset.actChange === "upload") { upload(i.files[0]); i.value = ""; }
   if (i.dataset && i.dataset.actChange === "view-group") { S.viewGid = i.value; followGroup(); render(); }
 });
-document.addEventListener("toggle", e => { const t = e.target; if (t.dataset && t.dataset.actToggle === "load-members" && t.open) { S.openRoster = t.dataset.gid; loadAdminMembers(t.dataset.gid); } }, true);
+document.addEventListener("toggle", e => {
+  const t = e.target;
+  if (!t.dataset || t.dataset.actToggle !== "load-members") return;
+  if (t.open && S.openRoster !== t.dataset.gid) { S.openRoster = t.dataset.gid; loadAdminMembers(t.dataset.gid); }
+  else if (!t.open && S.openRoster === t.dataset.gid) { S.openRoster = null; }
+}, true);
 
 // 가입 직후: 적어 둔 코드로 바로 참가
 setInterval(() => {
