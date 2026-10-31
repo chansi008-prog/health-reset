@@ -103,8 +103,8 @@ async function boot() {
 function startData() {
   sub("me", `users/${S.pid}`, v => { S.me = v; render(); });
   sub("users", "users", v => { S.users = v || {}; render(); });
-  sub("super", "meta/super", v => { S.superPid = v || null; followAdmin(); render(); });
-  sub("groups", "groups", v => { S.groups = v || {}; render(); });
+  sub("super", "meta/super", v => { S.superPid = v || null; followAdmin(); followGroup(); render(); });
+  sub("groups", "groups", v => { S.groups = v || {}; if (!S.viewGid) followGroup(); followAdmin(); render(); });
   sub("cycles", "cycles", v => { S.cycles = v || {}; pickCycles(); followCycle(); S.ready = true; render(); });
   sub("adminOf", `adminOf/${S.pid}`, v => { S.adminOf = v || {}; followAdmin(); followCycle(); render(); });
 }
@@ -271,6 +271,10 @@ function vToday() {
   const c = cyc(S.cid), st = cycleState(c), d = today();
   let out = vSuperStart();
   if (S.nextCid && !S.myNextGid) out += vJoin(S.nextCid, `다음 회차(${cyc(S.nextCid).name})`);
+  if (!S.myGid && isSuper()) return out + `<div class="card"><div class="h">👑 총관리자</div>
+    <div class="note mt">총관리자는 팀에 가입하지 않아도 돼요. <b>관리</b> 탭에서 모든 팀을 관리하고, <b>우리 그룹 · 전체 표</b> 탭에서 위쪽 선택 상자로 팀을 골라 볼 수 있어요.</div>
+    <button class="btn w mt" data-act="tab" data-t="admin">관리 탭으로</button></div>
+    <details class="card"><summary class="note">나도 한 팀에 참가해서 인증하기</summary><div class="mt">${vJoin(S.cid)}</div></details>`;
   if (!S.myGid) return out + vJoin(S.cid) + (isAdmin() ? `<div class="note center">관리 탭에서 그룹과 회차를 설정할 수 있어요.</div>` : "");
   const mine = ((S.checks[S.pid] || {})[d]) || {};
   const can = st === "active";
@@ -304,6 +308,7 @@ function groupPicker() {
   if (!isAdmin()) return "";
   const gids = Object.keys(S.groups || {});
   if (gids.length < 2) return "";
+  if (gids.length > 3) return `<select class="inp" id="view-gid" data-act-change="view-group" style="margin:0 0 12px">${gids.map(g => `<option value="${g}" ${S.viewGid === g ? "selected" : ""}>${esc(S.groups[g].name)}${canManage(g) && !isSuper() ? " ★" : ""}</option>`).join("")}</select>`;
   return `<div class="seg">${gids.map(g => `<button data-act="view-group" data-gid="${g}" class="${S.viewGid === g ? "on" : ""}">${esc(S.groups[g].name)}${canManage(g) && !isSuper() ? " ★" : ""}</button>`).join("")}</div>`;
 }
 const memberPids = () => Object.keys(S.members || {}).sort((a, b) => userName(a).localeCompare(userName(b), "ko"));
@@ -354,7 +359,7 @@ function vGrid() {
 // 내 기록
 function vMine() {
   const c = cyc(S.cid);
-  if (!S.myGid || !c) return `<div class="card note center">참가한 회차가 없어요.</div>` + vMyInfo();
+  if (!S.myGid || !c) return `<div class="card note center">${isSuper() ? "총관리자는 팀에 가입하지 않아 내 기록이 없어요." : "참가한 회차가 없어요."}</div>` + vMyInfo();
   const ps = personStats(S.pid, c), t = today();
   const cells = [];
   for (let i = 0; i < dow(c.s); i++) cells.push(`<div class="c out"></div>`);
@@ -423,14 +428,14 @@ function vAdmin() {
     const open = grp.openUntil > now();
     const mem = S.adminMembers && S.adminMembers[g] ? S.adminMembers[g] : null;
     const admins = Object.keys(grp.admins || {});
-    out += `<div class="card"><div class="row"><span class="h">👥 ${esc(grp.name)}</span><span class="pill">코드 ${esc(code || "…")}</span></div>
+    out += `<div class="card"><div class="row"><span class="h">👥 ${esc(grp.name)}${isSuper() ? ` <button class="note" style="text-decoration:underline" data-act="group-rename" data-gid="${g}">이름 바꾸기</button>` : ""}</span><span class="pill">코드 ${esc(code || "…")}</span></div>
       <div class="note mt">참가자는 가입할 때 이 그룹 코드를 넣어요. 모집 기간에만 열려요.</div>
       <div class="li"><div class="grow"><b>추가 참가</b><div class="note">${open ? `열림 · ${md(dayOf(grp.openUntil))} ${hhmm(grp.openUntil)}까지` : "닫힘 (활동 중 늦게 온 사람용)"}</div></div>
         ${open ? `<button class="btn sm l" data-act="open-close" data-gid="${g}">닫기</button>` : `<select id="open-days-${g}" class="inp" style="width:auto;margin:0;padding:6px"><option value="1">1일</option><option value="3" selected>3일</option><option value="7">7일</option></select><button class="btn sm g" data-act="open-join" data-gid="${g}">열기</button>`}</div>
       <div class="li"><div class="grow"><b>관리자</b> <span class="note">${admins.length}/${MAX_ADMINS}</span><div class="note">${admins.map(p => esc(userName(p))).join(", ") || "없음"}</div></div></div>
       ${isSuper() ? `<div class="row mt"><button class="btn sm w" data-act="invite" data-gid="${g}" ${admins.length >= MAX_ADMINS ? "disabled" : ""}>관리자 초대 코드</button><button class="btn sm w" data-act="admin-pick" data-gid="${g}">명단에서 관리자 지정</button></div>
         ${S.inviteShow && S.inviteShow.gid === g ? `<div class="warnbox" style="background:var(--acc2);color:#135e34">초대 코드 <b style="font-size:20px;letter-spacing:2px">${S.inviteShow.code}</b> · 24시간, 1회용<br>받은 사람이 가입할 때 그룹 코드 자리에 넣으면 관리자가 돼요.</div>` : ""}` : ""}
-      <details class="mt" data-act-toggle="load-members" data-gid="${g}" ${S.openRoster === g ? "open" : ""}><summary class="h" style="font-size:14px">명단 (${S.cid ? esc(cyc(S.cid).name) : ""}) ${mem ? Object.keys(mem).length + "명" : ""}</summary>
+      <details class="mt" data-act-toggle="load-members" data-gid="${g}" ${S.openRoster === g ? "open" : ""}><summary class="h" style="font-size:14px">참가자 명단 ${mem ? Object.keys(mem).length + "명" : ""}</summary>
         ${mem ? Object.keys(mem).sort((a, b) => userName(a).localeCompare(userName(b), "ko")).map(p => `<div class="li"><span class="grow">${esc(dispName(p, Object.keys(mem)))}${admins.includes(p) ? ` <span class="pill g">관리자</span>` : ""}</span>
           ${isSuper() && S.pickAdmin === g ? (admins.includes(p) ? `<button class="btn sm l" data-act="admin-off" data-gid="${g}" data-pid="${p}">관리자 해제</button>` : `<button class="btn sm g" data-act="admin-on" data-gid="${g}" data-pid="${p}" ${admins.length >= MAX_ADMINS ? "disabled" : ""}>관리자 지정</button>`) : `<button class="btn sm l" data-act="kick" data-gid="${g}" data-pid="${p}">빼기</button>`}</div>`).join("") || `<div class="note">아직 없어요.</div>` : `<div class="note">불러오는 중…</div>`}
       </details></div>`;
@@ -447,7 +452,7 @@ function vCycleForm() {
   const s = c ? c.s : t + 1, e = c ? c.e : t + 30, rd = c ? Math.round((dayStartMs(c.s) - c.rsMs) / DAY) : 7;
   return `<div class="card mt" style="background:#fafafa">
     <div class="h mb">${c ? "회차 수정" : "새 회차"}</div>
-    ${fld("cy-name", "이름", `value="${esc(c ? c.name : `${dDate(s).getUTCMonth() + 1}월 회차`)}" data-fresh="1"`)}
+    ${fld("cy-name", "회차 이름 (예: 11월 회차 · 그룹 이름 아님)", `value="${esc(c ? c.name : `${dDate(s).getUTCMonth() + 1}월 회차`)}" data-fresh="1"`)}
     ${fld("cy-s", "활동 시작일", `type="date" value="${inputFromDay(s)}" data-fresh="1"`)}
     ${fld("cy-e", "활동 종료일", `type="date" value="${inputFromDay(e)}" data-fresh="1"`)}
     ${fld("cy-rd", "모집 기간 (시작 전 며칠)", `type="number" min="0" max="14" value="${rd}" data-fresh="1"`)}
@@ -662,6 +667,7 @@ document.addEventListener("click", async e => {
       case "cell": showDay(d.pid, +d.day); break;
       case "person": S.tab = "grid"; render(); break;
       case "close": closeSheet(); break;
+      case "tab": S.tab = d.t; if (S.tab === "admin") loadAllMemberOf(); render(); scrollTo(0, 0); break;
       case "view-group": S.viewGid = d.gid; followGroup(); render(); break;
       case "grid-mode": S.gridMode = d.m; render(); break;
       case "reset-ok": await approveReset(d.pid); break;
@@ -671,6 +677,11 @@ document.addEventListener("click", async e => {
       case "cycle-cancel": S.cycEdit = undefined; render(); break;
       case "cycle-save": await saveCycle(); break;
       case "group-new": await newGroup(); break;
+      case "group-rename": {
+        const nm = (prompt("새 그룹 이름", (S.groups[d.gid] || {}).name || "") || "").trim();
+        if (nm) { await set(`groups/${d.gid}/name`, nm.slice(0, 12)); toast("그룹 이름을 바꿨어요"); }
+        break;
+      }
       case "open-join": { const days = +($("#open-days-" + d.gid) || {}).value || 3; await set(`groups/${d.gid}/openUntil`, now() + days * DAY); toast(`추가 참가를 ${days}일 열었어요`); break; }
       case "open-close": await set(`groups/${d.gid}/openUntil`, 0); toast("추가 참가를 닫았어요"); break;
       case "invite": {
@@ -688,7 +699,11 @@ document.addEventListener("click", async e => {
     }
   } catch (err) { console.error(err); toast("처리하지 못했어요: " + (err.code || err.message || "")); b.disabled = false; }
 });
-document.addEventListener("change", e => { const i = e.target; if (i.dataset && i.dataset.actChange === "upload") { upload(i.files[0]); i.value = ""; } });
+document.addEventListener("change", e => {
+  const i = e.target;
+  if (i.dataset && i.dataset.actChange === "upload") { upload(i.files[0]); i.value = ""; }
+  if (i.dataset && i.dataset.actChange === "view-group") { S.viewGid = i.value; followGroup(); render(); }
+});
 document.addEventListener("toggle", e => { const t = e.target; if (t.dataset && t.dataset.actToggle === "load-members" && t.open) { S.openRoster = t.dataset.gid; loadAdminMembers(t.dataset.gid); } }, true);
 
 // 가입 직후: 적어 둔 코드로 바로 참가
