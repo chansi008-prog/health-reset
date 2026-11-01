@@ -157,6 +157,24 @@ async function pushInit() {
   S.push.sup = await pushSupported();
   if (S.push.sup && Notification.permission === "granted" && lsGet("hr-push") === "on") await savePushToken();
   render();
+  setTimeout(maybeAskPush, 900);
+}
+// 처음 열 때 알림 받기를 팝업으로 물어보기 ("나중에"를 누르면 3일 뒤 다시)
+function maybeAskPush() {
+  if (S.view !== "app" || !S.pid || S.push.on || document.querySelector(".mask")) return;
+  const last = +(lsGet("hr-push-ask") || 0);
+  if (last && now() - last < 3 * DAY) return;
+  const iosBrowser = isIOS && !standalone();
+  if (!iosBrowser && (!S.push.sup || Notification.permission !== "default")) return;
+  lsSet("hr-push-ask", String(now()));
+  openSheet(`<div class="center"><div style="font-size:42px">🔔</div>
+    <div class="h mt" style="font-size:18px">저녁 8시 알림을 받으시겠어요?</div>
+    <div class="note mt">체크를 다 못 한 날, 저녁 8시에 남은 항목을 폰으로 알려 드려요.</div>
+    ${iosBrowser
+      ? `<div class="warnbox" style="text-align:left">아이폰은 <b>홈 화면에 추가한 건강 RESET 아이콘</b>으로 열어야 알림을 받을 수 있어요.<br>사파리 아래쪽 공유 버튼(□↑) → <b>홈 화면에 추가</b> → 그 아이콘으로 다시 열기</div>
+         <button class="btn g mt" data-act="close">알겠어요</button>`
+      : `<button class="btn g mt" data-act="ask-push-yes">알림 받기</button><div class="note mt">다음 화면에서 <b>허용</b>을 눌러 주세요</div>`}
+    <button class="btn l mt" data-act="close">나중에</button></div>`);
 }
 async function savePushToken() {
   try {
@@ -196,7 +214,7 @@ function vPush() {
 }
 function maybePopup() {
   const c = cyc(S.cid), d = today();
-  if (S.view !== "app" || !S.myGid || !S.myChecks || cycleState(c) !== "active") return;
+  if (S.view !== "app" || !S.myGid || !S.myChecks || cycleState(c) !== "active" || document.querySelector(".mask")) return;
   if (new Date(now() + KST).getUTCHours() < REMIND_HOUR || lsGet("hr-pop") === String(d)) return;
   const r = S.myChecks[d] || {};
   const left = ITEMS.filter(([k]) => !validAt(r[k], d));
@@ -467,7 +485,7 @@ function vMyInfo() {
     </div>${vPush()}<div class="card">
     <details><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v12</div></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v13</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
@@ -768,6 +786,7 @@ document.addEventListener("click", async e => {
       case "person": S.tab = "grid"; render(); break;
       case "close": closeSheet(); break;
       case "push-on": await pushOn(); break;
+      case "ask-push-yes": closeSheet(); await pushOn(); break;
       case "push-off": await pushOff(); break;
       case "pop-go": closeSheet(); S.tab = "today"; render(); scrollTo(0, 0); break;
       case "tab": S.tab = d.t; if (S.tab === "admin") loadAllMemberOf(); render(); scrollTo(0, 0); break;
