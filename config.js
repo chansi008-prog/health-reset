@@ -11,4 +11,4 @@ export const firebaseConfig = {
 };
 
 // 웹 푸시 키 (Firebase 콘솔 → 프로젝트 설정 → 클라우드 메시징 → 웹 푸시 인증서). 공개용 값
-export const vapidKey = "";
+export const vapidKey = "BClpnShvnUY50Xdzsc56ZN_jvsyvK3qjORB9lZDcm8cpyZeyouE33ZckTCjZ4uOhpq8T1QTSgIvUq0GizfKV2_0";

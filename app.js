@@ -467,7 +467,7 @@ function vMyInfo() {
     </div>${vPush()}<div class="card">
     <details><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v11</div></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v12</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
