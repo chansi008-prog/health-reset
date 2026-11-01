@@ -1,7 +1,11 @@
 name: 저녁 8시 알림
 on:
+  # 한국 저녁 8시 = 11:00 UTC. GitHub 무료 예약은 정각에 자주 건너뛰므로 정각을 피해 세 번 건다.
+  # 스크립트가 하루 한 번만 보내고 나머지는 건너뛴다 (meta/remindSent).
   schedule:
-    - cron: "0 11 * * *"   # 매일 11:00 UTC = 한국 저녁 8시 (GitHub 사정으로 몇 분 늦을 수 있음)
+    - cron: "2 11 * * *"
+    - cron: "17 11 * * *"
+    - cron: "40 11 * * *"
   workflow_dispatch:
     inputs:
       only_name:
