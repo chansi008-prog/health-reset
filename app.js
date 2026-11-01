@@ -192,7 +192,7 @@ async function savePushToken() {
 async function pushOn() {
   S.push.busy = true; render();
   const p = await Notification.requestPermission();
-  if (p !== "granted") { S.push.busy = false; toast("알림이 허용되지 않았어요"); render(); return; }
+  if (p !== "granted") { S.push.busy = false; render(); pushHelp(); return; }
   const ok = await savePushToken();
   S.push.busy = false; toast(ok ? "저녁 8시 알림을 받아요 🔔" : "알림을 켜지 못했어요. 잠시 후 다시 눌러 주세요."); render();
 }
@@ -202,13 +202,32 @@ async function pushOff() {
   await pushDelete();
   lsSet("hr-push", "off"); S.push.on = false; toast("알림을 껐어요"); render();
 }
+// 알림이 거절됐을 때: 폰·브라우저에 맞춘 해결 방법
+function pushHelp() {
+  const ua = navigator.userAgent;
+  const samsung = /SamsungBrowser/i.test(ua), kakao = /KAKAOTALK/i.test(ua), android = /Android/i.test(ua);
+  let body;
+  if (kakao) body = `<div class="note">카톡 안의 브라우저에서는 알림을 받을 수 없어요.<br>오른쪽 위(또는 아래) 메뉴 → <b>다른 브라우저로 열기</b> → ${android ? "크롬" : "사파리"}에서 다시 열어 주세요.</div>`;
+  else if (samsung) body = `<div class="note">삼성 인터넷에서는 알림이 잘 안 될 수 있어요. <b>크롬</b>으로 열어 주세요.<br>또는 삼성 인터넷 ≡ → 설정 → 사이트 및 다운로드 → 알림 → 이 사이트 허용</div>`;
+  else if (android) body = `<div style="text-align:left;font-size:14px;line-height:1.6">
+      <b>① 크롬 사이트 허용</b> (가장 흔한 원인)<br>크롬 주소창 왼쪽 <b>자물쇠/⚙ 아이콘 → 권한(사이트 설정) → 알림 → 허용</b><br>
+      <span class="note">또는 크롬 ⋮ → 설정 → 사이트 설정 → 알림 → 차단됨에서 chansi008-prog.github.io → 허용. "알림 요청 조용히 표시"는 끄기</span><br><br>
+      <b>② 홈 화면 아이콘으로 쓰는 경우</b><br>폰 <b>설정 → 애플리케이션 → 건강 RESET → 알림 → 허용</b><br><br>
+      <b>③ 폰 설정의 크롬 알림</b><br>설정 → 애플리케이션 → Chrome → 알림 → 허용</div>`;
+  else if (isIOS) body = `<div style="text-align:left;font-size:14px;line-height:1.6">${standalone() ? "" : "<b>홈 화면에 추가한 건강 RESET 아이콘</b>으로 열어야 해요.<br><br>"}폰 <b>설정 → 알림 → 건강 RESET → 알림 허용</b> 켜기</div>`;
+  else body = `<div class="note">브라우저 주소창 왼쪽 자물쇠 아이콘 → 알림 → 허용</div>`;
+  openSheet(`<div class="center"><div style="font-size:38px">🔕</div><div class="h mt" style="font-size:17px">알림이 허용되지 않았어요</div></div>
+    <div class="mt">${body}</div>
+    <div class="note mt center">허용한 뒤 앱을 완전히 닫았다가 다시 열고 <b>[알림 받기]</b>를 눌러 주세요.</div>
+    <button class="btn l mt" data-act="close">닫기</button>`);
+}
 function vPush() {
   if (!pushReady()) return "";
   const head = `<div class="row"><span class="h">🔔 저녁 8시 알림</span>`;
   if (isIOS && !standalone()) return `<div class="card">${head}</div><div class="note mt">아이폰은 <b>홈 화면에 추가한 건강 RESET 아이콘</b>으로 열어야 알림을 받을 수 있어요.<br>사파리 아래쪽 공유 버튼(□↑) → 홈 화면에 추가 → 아이콘으로 열기</div></div>`;
   if (S.push.sup === null) return "";
   if (!S.push.sup) return `<div class="card">${head}</div><div class="note mt">이 브라우저에서는 알림을 받을 수 없어요. ${isIOS ? "아이폰은 iOS 16.4 이상이 필요해요 (설정 → 일반 → 소프트웨어 업데이트)." : "크롬으로 열어 주세요."}</div></div>`;
-  if (Notification.permission === "denied") return `<div class="card">${head}<span class="pill">꺼짐</span></div><div class="note mt">알림이 차단되어 있어요. 휴대폰 <b>설정 → 알림</b>에서 ${isIOS ? "건강 RESET" : "크롬(또는 건강 RESET)"} 알림을 허용한 뒤 다시 열어 주세요.</div></div>`;
+  if (Notification.permission === "denied") return `<div class="card">${head}<span class="pill">꺼짐</span></div><div class="note mt mb">알림이 차단되어 있어요. 허용하는 방법을 확인해 주세요.</div><button class="btn w" data-act="push-help">허용하는 방법 보기</button></div>`;
   if (S.push.on) return `<div class="card">${head}<span class="pill g">받는 중</span></div><div class="row mt"><span class="note">체크를 다 못 했으면 저녁 8시에 알려 드려요.</span><button class="btn sm l" data-act="push-off">끄기</button></div></div>`;
   return `<div class="card">${head}</div><div class="note mt mb">체크를 다 못 한 날, 저녁 8시에 폰으로 알려 드려요.</div><button class="btn g" data-act="push-on" ${S.push.busy ? "disabled" : ""}>${S.push.busy ? "설정 중…" : "알림 받기"}</button></div>`;
 }
@@ -485,7 +504,7 @@ function vMyInfo() {
     </div>${vPush()}<div class="card">
     <details><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v13</div></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v14</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
@@ -788,6 +807,7 @@ document.addEventListener("click", async e => {
       case "push-on": await pushOn(); break;
       case "ask-push-yes": closeSheet(); await pushOn(); break;
       case "push-off": await pushOff(); break;
+      case "push-help": pushHelp(); break;
       case "pop-go": closeSheet(); S.tab = "today"; render(); scrollTo(0, 0); break;
       case "tab": S.tab = d.t; if (S.tab === "admin") loadAllMemberOf(); render(); scrollTo(0, 0); break;
       case "view-group": S.viewGid = d.gid; S.viewPicked = true; followGroup(); render(); break;
