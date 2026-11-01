@@ -142,6 +142,12 @@
         ".read": "auth != null && data.child('uid').val() === auth.uid",
         ".write": "(auth != null && root.child('auth').child(auth.uid).exists() && root.child('adminOf').child(root.child('auth').child(auth.uid).val()).exists()) || (auth != null && root.child('auth').child(auth.uid).exists() && root.child('meta/super').exists() && root.child('meta/super').val() === root.child('auth').child(auth.uid).val()) || (auth != null && !root.child('auth').child(auth.uid).exists() && newData.child('uid').val() === auth.uid && newData.child('at').val() === now)"
       }
+    },
+    "tokens": {
+      "$pid": {
+        ".read": "auth != null && root.child('auth').child(auth.uid).exists() && root.child('auth').child(auth.uid).val() === $pid",
+        ".write": "auth != null && root.child('auth').child(auth.uid).exists() && root.child('auth').child(auth.uid).val() === $pid"
+      }
     }
   }
 }

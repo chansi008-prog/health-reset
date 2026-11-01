@@ -1,0 +1,22 @@
+name: 저녁 8시 알림
+on:
+  schedule:
+    - cron: "0 11 * * *"   # 매일 11:00 UTC = 한국 저녁 8시 (GitHub 사정으로 몇 분 늦을 수 있음)
+  workflow_dispatch:
+    inputs:
+      only_name:
+        description: "시험: 이 이름에게만 보내기 (비우면 미완료자 전체)"
+        required: false
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save --no-package-lock firebase-admin@12
+      - run: node scripts/remind.mjs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ONLY_NAME: ${{ inputs.only_name }}

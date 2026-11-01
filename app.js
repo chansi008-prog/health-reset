@@ -1,5 +1,5 @@
 // 건강 Reset 프로그램 — 화면과 동작
-import { initStore, auth, get, set, update, remove, watch, now, TS, testMode } from "./store.js";
+import { initStore, auth, get, set, update, remove, watch, now, TS, testMode, pushReady, pushSupported, pushToken, pushDelete } from "./store.js";
 
 // ── 날짜: 하루 기준은 한국 시간 00:00, 날짜는 "일 번호"(1970-01-01부터 며칠째)로 다룬다 ──
 const DAY = 864e5, KST = 9 * 3600e3;
@@ -100,12 +100,13 @@ async function boot() {
   // 날짜가 바뀌면(자정) 회차 상태를 다시 계산. 폰에서 앱을 다시 열었을 때도 바로 확인한다
   const dayCheck = () => { const t = today(); if (t !== S._lastDay) { S._lastDay = t; if (S.pid) { pickCycles(); followCycle(); followGroup(); } render(); } };
   setInterval(dayCheck, 30e3);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) dayCheck(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { dayCheck(); setTimeout(maybePopup, 800); } });
   addEventListener("pageshow", dayCheck); addEventListener("focus", dayCheck);
   S._lastDay = today();
 }
 
 function startData() {
+  pushInit();
   sub("me", `users/${S.pid}`, v => { S.me = v; render(); });
   sub("users", "users", v => { S.users = v || {}; render(); });
   sub("super", "meta/super", v => { S.superPid = v || null; followAdmin(); followGroup(); render(); });
@@ -125,7 +126,7 @@ function followGroup() {
   if ((!S.viewPicked && S.myGid) || !S.viewGid || (!isAdmin() && S.viewGid !== S.myGid)) S.viewGid = S.myGid || myAdminGids()[0] || (isSuper() ? gids[0] : null) || null;
   // 내 기록은 보는 팀과 상관없이 내 팀에서
   const mg = S.myGid, c0 = S.cid;
-  sub("myChecks", mg && c0 ? `checks/${c0}/${mg}/${S.pid}` : null, v => { S.myChecks = v || {}; render(); });
+  sub("myChecks", mg && c0 ? `checks/${c0}/${mg}/${S.pid}` : null, v => { S.myChecks = v || {}; render(); setTimeout(maybePopup, 600); });
   sub("myThumb", mg && c0 ? `thumbs/${c0}/${mg}/${today()}/${S.pid}` : null, v => { S.myThumb = v; render(); });
   sub("myMember", mg && c0 ? `members/${c0}/${mg}/${S.pid}` : null, v => { S.myMember = v; render(); });
   if (!mg) { S.myChecks = {}; S.myThumb = null; S.myMember = null; }
@@ -142,6 +143,69 @@ function followAdmin() {
     gids.forEach(g => sub(`code-${g}`, `groupCode/${g}`, v => { S.groupCodes[g] = v; render(); }));
     if (!S._memLoaded) { S._memLoaded = true; setTimeout(loadAllMemberOf, 500); }
   } else sub("resets", null);
+}
+
+// ── 저녁 8시 알림 (푸시) + 앱을 열 때 팝업 ──
+const REMIND_HOUR = 20;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+S.push = { sup: null, on: false, busy: false };
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+async function pushInit() {
+  if (!pushReady()) return;
+  S.push.sup = await pushSupported();
+  if (S.push.sup && Notification.permission === "granted" && lsGet("hr-push") === "on") await savePushToken();
+  render();
+}
+async function savePushToken() {
+  try {
+    const t = await pushToken();
+    if (!t) return false;
+    const k = await sha(t);
+    const old = lsGet("hr-push-key");
+    const o = { [`tokens/${S.pid}/${k}`]: { t, at: TS, os: isIOS ? "ios" : /Android/.test(navigator.userAgent) ? "android" : "etc" } };
+    if (old && old !== k) o[`tokens/${S.pid}/${old}`] = null;
+    await update(o);
+    lsSet("hr-push", "on"); lsSet("hr-push-key", k); S.push.on = true;
+    return true;
+  } catch (e) { console.error(e); return false; }
+}
+async function pushOn() {
+  S.push.busy = true; render();
+  const p = await Notification.requestPermission();
+  if (p !== "granted") { S.push.busy = false; toast("알림이 허용되지 않았어요"); render(); return; }
+  const ok = await savePushToken();
+  S.push.busy = false; toast(ok ? "저녁 8시 알림을 받아요 🔔" : "알림을 켜지 못했어요. 잠시 후 다시 눌러 주세요."); render();
+}
+async function pushOff() {
+  const k = lsGet("hr-push-key");
+  if (k) await remove(`tokens/${S.pid}/${k}`);
+  await pushDelete();
+  lsSet("hr-push", "off"); S.push.on = false; toast("알림을 껐어요"); render();
+}
+function vPush() {
+  if (!pushReady()) return "";
+  const head = `<div class="row"><span class="h">🔔 저녁 8시 알림</span>`;
+  if (isIOS && !standalone()) return `<div class="card">${head}</div><div class="note mt">아이폰은 <b>홈 화면에 추가한 건강 RESET 아이콘</b>으로 열어야 알림을 받을 수 있어요.<br>사파리 아래쪽 공유 버튼(□↑) → 홈 화면에 추가 → 아이콘으로 열기</div></div>`;
+  if (S.push.sup === null) return "";
+  if (!S.push.sup) return `<div class="card">${head}</div><div class="note mt">이 브라우저에서는 알림을 받을 수 없어요. ${isIOS ? "아이폰은 iOS 16.4 이상이 필요해요 (설정 → 일반 → 소프트웨어 업데이트)." : "크롬으로 열어 주세요."}</div></div>`;
+  if (Notification.permission === "denied") return `<div class="card">${head}<span class="pill">꺼짐</span></div><div class="note mt">알림이 차단되어 있어요. 휴대폰 <b>설정 → 알림</b>에서 ${isIOS ? "건강 RESET" : "크롬(또는 건강 RESET)"} 알림을 허용한 뒤 다시 열어 주세요.</div></div>`;
+  if (S.push.on) return `<div class="card">${head}<span class="pill g">받는 중</span></div><div class="row mt"><span class="note">체크를 다 못 했으면 저녁 8시에 알려 드려요.</span><button class="btn sm l" data-act="push-off">끄기</button></div></div>`;
+  return `<div class="card">${head}</div><div class="note mt mb">체크를 다 못 한 날, 저녁 8시에 폰으로 알려 드려요.</div><button class="btn g" data-act="push-on" ${S.push.busy ? "disabled" : ""}>${S.push.busy ? "설정 중…" : "알림 받기"}</button></div>`;
+}
+function maybePopup() {
+  const c = cyc(S.cid), d = today();
+  if (S.view !== "app" || !S.myGid || !S.myChecks || cycleState(c) !== "active") return;
+  if (new Date(now() + KST).getUTCHours() < REMIND_HOUR || lsGet("hr-pop") === String(d)) return;
+  const r = S.myChecks[d] || {};
+  const left = ITEMS.filter(([k]) => !validAt(r[k], d));
+  if (!left.length) return;
+  lsSet("hr-pop", String(d));
+  openSheet(`<div class="center"><div style="font-size:40px">⏰</div><div class="h mt">오늘 체크 ${left.length}개가 남았어요!</div>
+    <div class="mt" style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">${left.map(([, e, t]) => `<span class="pill" style="font-size:13px;padding:6px 10px">${e} ${t}</span>`).join("")}</div>
+    <div class="note mt">자정이 지나면 오늘 기록은 더 할 수 없어요.</div>
+    <button class="btn g mt" data-act="pop-go">체크하러 가기</button></div>`);
 }
 
 // ── 기록 계산 ──
@@ -318,7 +382,8 @@ function vToday() {
     <div class="card"><div class="lbl">내 달성률</div><div class="big">${ps.rate}%</div></div>
     <div class="card"><div class="lbl">연속 완료</div><div class="big">${ps.streak}<small>일</small></div></div>
   </div>
-  ${can && now() % DAY > 0 && hhmm(now()) >= "23:30" ? `<div class="warnbox">오늘 인증이 곧 마감돼요 (자정 기준)</div>` : ""}`;
+  ${can && now() % DAY > 0 && hhmm(now()) >= "23:30" ? `<div class="warnbox">오늘 인증이 곧 마감돼요 (자정 기준)</div>` : ""}
+  ${S.push.on ? "" : vPush()}`;
   return out;
 }
 
@@ -399,9 +464,10 @@ function vMine() {
 function vMyInfo() {
   return `<div class="card"><div class="lbl">내 정보</div>
     <div class="row mt"><b>${esc(S.me ? S.me.name : "")} <span class="note">(${esc(S.me ? S.me.tail : "")})</span></b>${isSuper() ? `<span class="pill k">총관리자</span>` : isAdmin() ? `<span class="pill g">관리자</span>` : ""}</div>
-    <details class="mt"><summary class="note">관리자 초대 코드 입력</summary>
+    </div>${vPush()}<div class="card">
+    <details><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v10</div></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v11</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
@@ -701,6 +767,9 @@ document.addEventListener("click", async e => {
       case "cell": showDay(d.pid, +d.day); break;
       case "person": S.tab = "grid"; render(); break;
       case "close": closeSheet(); break;
+      case "push-on": await pushOn(); break;
+      case "push-off": await pushOff(); break;
+      case "pop-go": closeSheet(); S.tab = "today"; render(); scrollTo(0, 0); break;
       case "tab": S.tab = d.t; if (S.tab === "admin") loadAllMemberOf(); render(); scrollTo(0, 0); break;
       case "view-group": S.viewGid = d.gid; S.viewPicked = true; followGroup(); render(); break;
       case "grid-mode": S.gridMode = d.m; render(); break;

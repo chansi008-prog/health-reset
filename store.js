@@ -1,6 +1,6 @@
 // 데이터 저장소: Firebase(실제) 또는 이 기기 안의 "테스트 모드"(config.js가 비어 있을 때)
 // 앱은 이 파일의 함수만 쓴다: 로그인, 경로 읽기/쓰기, 실시간 구독, 서버 시간
-import { firebaseConfig } from "./config.js";
+import { firebaseConfig, vapidKey } from "./config.js";
 
 export const TS = { ".sv": "timestamp" };   // 서버 시간 표시 (쓰는 순간의 서버 시각으로 바뀜)
 export let testMode = !firebaseConfig || !firebaseConfig.apiKey || new URLSearchParams(location.search).has("test");
@@ -24,12 +24,31 @@ export const remove = path => api.set(path, null);
 export const watch = (path, cb) => api.on(path, cb);     // 반환값 = 구독 해제 함수
 export const now = () => Date.now() + (api ? api.offset() : 0);   // 서버 기준 현재 시각(ms)
 
+// 푸시 알림: 이 기기의 알림 주소(토큰)를 받는다. 지원 안 되면 null
+const FB = "https://www.gstatic.com/firebasejs/10.12.2";
+let fbApp = null;
+export const pushReady = () => !testMode && !!vapidKey;
+export async function pushSupported() {
+  if (!pushReady() || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return false;
+  try { const M = await import(`${FB}/firebase-messaging.js`); return await M.isSupported(); } catch { return false; }
+}
+export async function pushToken() {
+  const M = await import(`${FB}/firebase-messaging.js`);
+  const reg = await navigator.serviceWorker.register("sw.js");
+  await navigator.serviceWorker.ready;
+  return M.getToken(M.getMessaging(fbApp), { vapidKey, serviceWorkerRegistration: reg });
+}
+export async function pushDelete() {
+  try { const M = await import(`${FB}/firebase-messaging.js`); await M.deleteToken(M.getMessaging(fbApp)); } catch {}
+}
+
 async function makeFirebase() {
   const V = "10.12.2", base = `https://www.gstatic.com/firebasejs/${V}`;
   const { initializeApp } = await import(`${base}/firebase-app.js`);
   const A = await import(`${base}/firebase-auth.js`);
   const D = await import(`${base}/firebase-database.js`);
   const app = initializeApp(firebaseConfig);
+  fbApp = app;
   const au = A.getAuth(app);
   await A.setPersistence(au, A.browserLocalPersistence);
   const db = D.getDatabase(app);

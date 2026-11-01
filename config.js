@@ -9,3 +9,6 @@ export const firebaseConfig = {
   messagingSenderId: "683510149371",
   appId: "1:683510149371:web:a4731a4d4511e6380b405e",
 };
+
+// 웹 푸시 키 (Firebase 콘솔 → 프로젝트 설정 → 클라우드 메시징 → 웹 푸시 인증서). 공개용 값
+export const vapidKey = "";
