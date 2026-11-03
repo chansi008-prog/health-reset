@@ -31,8 +31,11 @@ if (onlyName) {
   pids.forEach(p => push(p, "건강 Reset 프로그램", "🔔 알림 시험이에요. 이 알림이 보이면 성공!"));
   console.log(`시험: ${onlyName} → ${pids.length}명, 기기 ${messages.length}대`);
 } else {
-  // 하루 한 번만: 여러 번 예약된 실행 중 처음 것만 보낸다
-  if ((await val("meta/remindSent")) === t) { console.log("오늘은 이미 보냈어요"); process.exit(0); }
+  // 저녁 시간에만 보낸다 (늦게 깨어난 실행이 새벽·낮에 보내지 않게)
+  const kst = new Date(Date.now() + KST), mins = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  if (mins < 19 * 60 + 50 || mins > 23 * 60 + 30) { console.log(`지금은 보내는 시간이 아니에요 (한국 ${kst.getUTCHours()}:${String(kst.getUTCMinutes()).padStart(2, "0")})`); process.exit(0); }
+  // 하루 한 번만
+  if ((await val("meta/remindDay")) === t) { console.log("오늘은 이미 보냈어요"); process.exit(0); }
   const cycles = (await val("cycles")) || {};
   const active = Object.entries(cycles).find(([, c]) => c.s <= t && t <= c.e);
   if (!active) { console.log("진행 중인 회차가 없어요"); process.exit(0); }
@@ -64,6 +67,6 @@ for (let i = 0; i < messages.length; i += 500) {
   });
 }
 if (Object.keys(dead).length) await db.ref().update(dead);
-if (!onlyName) await db.ref("meta/remindSent").set(t);   // 다 보낸 뒤에 표시 (중간에 실패하면 다음 예약이 다시 시도)
+if (!onlyName) await db.ref("meta/remindDay").set(t);   // 다 보낸 뒤에 표시 (중간에 실패하면 다음 예약이 다시 시도)
 console.log(`보냄 ${ok}건, 지운 옛 기기 ${Object.keys(dead).length}건`);
 process.exit(0);
