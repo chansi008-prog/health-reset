@@ -138,6 +138,10 @@ function makeAudio() {
     tone(t, f, type, peak, d, dest = music) { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.value = f; env(g, t, 0.004, peak, d); o.connect(g).connect(dest); o.start(t); o.stop(t + d + 0.05); },
     bass(t, f, d) { const o = ctx.createOscillator(), fl = ctx.createBiquadFilter(), g = ctx.createGain(); o.type = "sawtooth"; o.frequency.value = f; fl.type = "lowpass"; fl.frequency.value = 520; fl.Q.value = 6; env(g, t, 0.005, 0.32, d); o.connect(fl).connect(g).connect(music); o.start(t); o.stop(t + d + 0.05); },
     beep(t, f) { I.tone(t, f, "sine", 0.35, 0.18, out); },
+    stab(t, fs, d) { const fl = ctx.createBiquadFilter(), g = ctx.createGain(); fl.type = "lowpass"; fl.frequency.setValueAtTime(3200, t); fl.frequency.exponentialRampToValueAtTime(900, t + d); env(g, t, 0.005, 0.16, d); fl.connect(g).connect(music);
+      fs.forEach(f => [-7, 7].forEach(c => { const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = c; o.connect(fl); o.start(t); o.stop(t + d + 0.05); })); },
+    crash(t) { I.noise(t, 5000, 0.5, "highpass", 0.18, 0.9); },
+    stomp(t) { I.kick(t, 0.8); I.noise(t, 300, 0.8, "lowpass", 0.35, 0.12); },
   };
   return { ctx, out, music, I };
 }
@@ -152,6 +156,18 @@ const STYLES = [
     bass: [...Array(8).keys()].map(i => [i * 2, i % 4 === 3 ? 7 : 0, 1]), lead: [...Array(16).keys()].map(i => [i, [0, 3, 7, 12, 15, 12, 7, 3][i % 8] + 12, 1]), leadType: "sawtooth" },
   { name: "라틴 리듬", kick: [0, 6, 8, 14], rim: [0, 3, 6, 10, 12], hat: [2, 6, 10, 14],
     bass: [[3, 0, 2], [6, 7, 2], [11, 0, 2], [14, 7, 2]], lead: [[0, 19, 1], [2, 17, 1], [4, 15, 2], [8, 12, 1], [10, 15, 2]], leadType: "triangle", conga: [1, 5, 7, 9, 13, 15] },
+  { name: "EDM 파티", kick: [0, 4, 8, 12], clap: [4, 12], hat: [2, 6, 10, 14], open: true, crash: true,
+    bass: [[2, 0, 1], [6, 0, 1], [10, 0, 1], [14, 0, 1]], stab: [[0, [0, 3, 7], 2], [3, [0, 3, 7], 1], [6, [0, 3, 7], 2], [10, [-2, 2, 5], 2], [14, [-2, 2, 5], 1]], lead: [], leadType: "square" },
+  { name: "디스코 펑크", kick: [0, 4, 8, 12], snare: [4, 12], hat: [...Array(16).keys()], open: true,
+    bass: [...Array(8).keys()].map(i => [i * 2, i % 2 ? 12 : 0, 1]), lead: [[2, 12, 1], [5, 15, 1], [7, 12, 1], [10, 19, 1], [13, 17, 2]], leadType: "square" },
+  { name: "레게톤", kick: [0, 8], snare: [3, 6, 11, 14], hat: [0, 2, 4, 6, 8, 10, 12, 14],
+    bass: [[0, 0, 3], [3, 0, 3], [8, -2, 3], [11, -2, 3]], lead: [[0, 15, 2], [3, 14, 1], [6, 12, 2], [12, 10, 2]], leadType: "triangle" },
+  { name: "록 스피릿", kick: [0, 6, 8], snare: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], crash: true,
+    bass: [...Array(8).keys()].map(i => [i * 2, i < 4 ? 0 : -2, 1]), stab: [[0, [0, 7, 12], 3], [6, [0, 7, 12], 2], [8, [-2, 5, 10], 3], [14, [-2, 5, 10], 2]], lead: [], leadType: "square" },
+  { name: "응원 박수", stompSteps: [0, 2, 8, 10], kick: [], clap: [4, 12], hat: [6, 14],
+    bass: [[0, 0, 2], [8, 0, 2]], lead: [[4, 12, 1], [5, 12, 1], [6, 15, 2], [12, 17, 1], [13, 15, 1], [14, 12, 2]], leadType: "square" },
+  { name: "빠른 드럼앤베이스", kick: [0, 10], snare: [4, 12], hat: [...Array(16).keys()], rim: [7, 15],
+    bass: [[0, 0, 4], [6, 3, 2], [10, -2, 4], [14, 5, 2]], lead: [[0, 24, 1], [2, 22, 1], [4, 19, 1], [8, 24, 1], [10, 27, 1], [12, 24, 2]], leadType: "triangle" },
 ];
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -300,6 +316,9 @@ export function openSquat({ onDone } = {}) {
         if (S.rim && S.rim.includes(s)) A.I.rim(t);
         if (S.hat.includes(s)) A.I.hat(t, S.open && s % 4 === 2);
         if (S.conga && S.conga.includes(s)) A.I.tone(t, hz(root + (s % 4 === 1 ? 7 : 3)), "sine", 0.18, 0.12);
+        if (S.stompSteps && S.stompSteps.includes(s)) A.I.stomp(t);
+        if (S.crash && s === 0 && Math.floor(n / 16) % 4 === 0) A.I.crash(t);
+        if (S.stab) S.stab.forEach(([p, ch, len]) => { if (p === s) A.I.stab(t, ch.map(x => hz(root + x)), len * STEP * 0.9); });
         S.bass.forEach(([p, semi, len]) => { if (p === s) A.I.bass(t, hz(root - 12 + semi), len * STEP * 0.95); });
         const bar = Math.floor(n / 16);
         if (bar % 2 === 1 || S.name === "신스 런") S.lead.forEach(([p, semi, len]) => { if (p === s) A.I.tone(t, hz(root + 12 + semi), S.leadType, 0.07, len * STEP * 0.9); });
