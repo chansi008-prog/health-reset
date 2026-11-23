@@ -405,6 +405,8 @@ function vToday() {
     <div class="row mb"><span class="h">오늘의 체크</span><span class="done">${n} / 4</span></div>
     <div class="cks">${ITEMS.map(([k, e, t]) => { const on = validAt(mine[k], d); return `<button class="ckb ${on ? "on" : "off"}" data-act="check" data-k="${k}" ${can ? "" : "disabled"}><em>${e}</em>${t}${on ? `<span class="t">✓ ${hhmm(mine[k])}</span>` : ""}</button>`; }).join("")}</div>
     <div class="note mt">것모닝·것나잇 = 프로틴·유산균으로 장(gut) 튼튼! · 오늘 안에는 다시 눌러 취소할 수 있어요</div>
+    ${can ? `<button class="btn mt" data-act="squat" style="background:linear-gradient(90deg,#ff7aa2,#ffb04a);font-size:16px">🏋️ 스쿼트 같이 하기 <span style="font-weight:700;font-size:13px;opacity:.9">· 10회 × 4세트</span></button>
+    <div class="note center" style="margin-top:6px">4세트를 마치면 운동이 자동으로 체크돼요</div>` : ""}
   </div>
   <div class="card">
     <div class="row mb"><span class="h">📷 오늘의 사진</span><span class="note">하루 1장 · 선택</span></div>
@@ -504,7 +506,7 @@ function vMyInfo() {
     </div>${vPush()}<div class="card">
     <details><summary class="note">관리자 초대 코드 입력</summary>
       <input class="inp" id="inv-code" inputmode="numeric" maxlength="6" placeholder="6자리 초대 코드"><button class="btn sm" data-act="claim">입력</button></details>
-    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v14</div></div>`;
+    <button class="btn l mt" data-act="logout">로그아웃</button><div class="note center mt">앱 버전 v15</div></div>`;
 }
 async function loadMyGallery() {
   const c = cyc(S.cid);
@@ -798,6 +800,16 @@ document.addEventListener("click", async e => {
         const k = d.k, day = today(), path = `checks/${S.cid}/${S.myGid}/${S.pid}/${day}/${k}`;
         const cur = (((S.myChecks || {})[day]) || {})[k];
         await set(path, validAt(cur, day) ? null : TS);
+        break;
+      }
+      case "squat": {
+        // 스쿼트 화면은 버튼을 누를 때만 불러온다 (다른 기능과 분리)
+        const cid = S.cid, gid = S.myGid, pid = S.pid;
+        const { openSquat } = await import("./squat.js");
+        openSquat({ onDone: async () => {
+          const day = today(), cur = (((S.myChecks || {})[day]) || {}).e;
+          if (cid && gid && !validAt(cur, day)) await set(`checks/${cid}/${gid}/${pid}/${day}/e`, TS);
+        } });
         break;
       }
       case "photo": showPhoto(d.pid, +d.day); break;
