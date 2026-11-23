@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>스쿼트 같이 하기 · 시안</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<header class="title"><div class="trow"><h1>건강 Reset 프로그램</h1><span class="dream">DreamUs</span></div><span class="chip">스쿼트 시안 (앱과 연결 안 됨)</span></header>
+<main>
+  <div class="card">
+    <div class="row mb"><span class="h">오늘의 체크</span><span class="done">3 / 4</span></div>
+    <button class="btn g" id="go">🏋️ 스쿼트 같이 하기</button>
+    <div class="note mt" id="res">4세트를 마치면 앱에서는 "운동"이 자동 체크돼요. (시안에서는 아래에 표시만)</div>
+  </div>
+</main>
+<script type="module">
+  document.getElementById("go").onclick = async () => {
+    const { openSquat } = await import("./squat.js");
+    openSquat({ onDone: () => { document.getElementById("res").textContent = "✓ 운동 자동 체크 (시안)"; } });
+  };
+</script>
+</body></html>
