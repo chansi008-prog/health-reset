@@ -23,11 +23,12 @@ function pose(p) {
     shL: [100 - 27, shY], shR: [100 + 27, shY],
     head: [100, shY - 38],
   };
-  // 팔: 서 있을 땐 옆으로 내림, 앉을 땐 앞으로 뻗어 가슴 앞에서 모임
-  P.elbL = pt([P.shL[0] - 7, shY + 36], [P.shL[0] + 6, shY + 16], p);
-  P.elbR = pt([P.shR[0] + 7, shY + 36], [P.shR[0] - 6, shY + 16], p);
-  P.hanL = pt([P.shL[0] - 7, shY + 68], [93, shY + 24], p);
-  P.hanR = pt([P.shR[0] + 7, shY + 68], [107, shY + 24], p);
+  // 팔: 양손으로 폰을 가슴 앞에 들고 있음 (앉을 땐 팔꿈치가 조금 벌어짐)
+  P.elbL = pt([P.shL[0] - 3, shY + 40], [P.shL[0] - 7, shY + 34], p);
+  P.elbR = pt([P.shR[0] + 3, shY + 40], [P.shR[0] + 7, shY + 34], p);
+  P.hanL = [89, shY + 34];
+  P.hanR = [111, shY + 34];
+  P.phone = [100, shY + 30];
   return P;
 }
 const f1 = n => n.toFixed(1);
@@ -104,7 +105,11 @@ function drawChar(p, g) {
     <path d="M100 ${f1(P.shL[1] - 2)}V${f1(hy + R - 4)}" stroke="${ink}" stroke-width="15" stroke-linecap="round"/><path d="M100 ${f1(P.shL[1] - 2)}V${f1(hy + R - 4)}" stroke="${L.skin}" stroke-width="9" stroke-linecap="round"/>
     <path d="${torso}" fill="${L.top}" stroke="${ink}" stroke-width="3.6" stroke-linejoin="round"/>
     ${g === "f" ? `<path d="M${f1(P.shL[0] + 6)} ${f1(P.shL[1] - 3)}Q100 ${f1(P.shL[1] + 14)} ${f1(P.shR[0] - 6)} ${f1(P.shR[1] - 3)}" fill="none" stroke="${ink}" stroke-width="2.6"/>` : `<path d="M90 ${f1(P.shL[1] - 4)}Q100 ${f1(P.shL[1] + 4)} 110 ${f1(P.shL[1] - 4)}" fill="none" stroke="${ink}" stroke-width="2.6"/>`}
-    ${limb(armL, 12, L.skin)}${limb(armR, 12, L.skin)}${sleeves}${hands}
+    ${limb(armL, 12, L.skin)}${limb(armR, 12, L.skin)}${sleeves}
+    <g transform="translate(${f1(P.phone[0])} ${f1(P.phone[1])})">
+      <rect x="-12" y="-19" width="24" height="38" rx="5" fill="#2b2f3a" stroke="${ink}" stroke-width="3"/>
+      <circle cx="-5" cy="-12" r="2.6" fill="#5b6478"/><circle cx="1" cy="-12" r="2.6" fill="#5b6478"/>
+    </g>${hands}
     <circle cx="${hx}" cy="${hy}" r="${R}" fill="${L.skin}" stroke="${ink}" stroke-width="3.6"/>
     ${hairFront}
     <circle cx="${hx - 11}" cy="${hy + 3}" r="3.8" fill="${ink}"/><circle cx="${hx + 11}" cy="${hy + 3}" r="3.8" fill="${ink}"/>
@@ -169,6 +174,37 @@ function say(text, on) {
   } catch {}
 }
 
+// ── 움직임 센서로 실제 스쿼트 세기 ──
+// 폰을 가슴 앞에 들고 앉았다 일어나면, 가장 앉은 순간(아래로 내려가다 멈추고 다시 올라갈 때)
+// 위쪽으로 큰 가속이 생긴다. 그 순간을 1회로 센다. 너무 잦은 흔들림은 0.8초 간격으로 막는다.
+const TH_UP = 0.7, MIN_GAP = 0.8;
+function makeMotion(onRep) {
+  const M = { events: 0, g: null, v: 0, level: 0, armed: true, last: 0, on: false };
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  M.handler = e => {
+    const ag = e.accelerationIncludingGravity;
+    if (!ag || ag.x == null) return;
+    M.events++;
+    let dt = e.interval || 1 / 60; if (dt > 1) dt /= 1000; dt = Math.min(0.1, Math.max(0.005, dt));
+    const a = [ag.x, ag.y, ag.z];
+    if (!M.g) M.g = a.slice();
+    const kG = 1 - Math.exp(-dt / 0.8);                 // 중력 방향(천천히 따라감)
+    for (let i = 0; i < 3; i++) M.g[i] += (a[i] - M.g[i]) * kG;
+    const gn = Math.hypot(...M.g) || 9.8, gu = M.g.map(x => x / gn);
+    const lin = e.acceleration && e.acceleration.x != null ? [e.acceleration.x, e.acceleration.y, e.acceleration.z] : a.map((x, i) => x - M.g[i]);
+    const vert = dot(lin, gu);                          // + = 위쪽으로 가속
+    M.v += (vert - M.v) * (1 - Math.exp(-dt / 0.08));
+    M.level = Math.max(M.level * 0.94, Math.abs(M.v));
+    if (!M.on) return;
+    const t = performance.now() / 1000;
+    if (M.armed && M.v > TH_UP && t - M.last > MIN_GAP) { M.armed = false; M.last = t; onRep(); }
+    if (!M.armed && M.v < 0.1) M.armed = true;
+  };
+  M.start = () => addEventListener("devicemotion", M.handler);
+  M.stop = () => removeEventListener("devicemotion", M.handler);
+  return M;
+}
+
 // ── 화면 ──
 const CSS = `
 .sqt{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;font-family:inherit;color:#3b2f2f;padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 16px)}
@@ -194,6 +230,9 @@ const CSS = `
 .sqt .pick button.on{background:#2ecc71;border-color:#2ecc71;color:#fff}
 .sqt .tip{font-size:12.5px;opacity:.7;text-align:center;line-height:1.5;margin-bottom:12px}
 .sqt .tg{font-size:13px;font-weight:800;opacity:.85;background:none;border:0;color:inherit}
+.sqt .meter{display:flex;align-items:center;gap:8px;justify-content:center;font-size:12px;font-weight:800;opacity:.75;margin-bottom:8px}
+.sqt .meter b{display:block;width:120px;height:8px;border-radius:4px;background:rgba(0,0,0,.1);overflow:hidden}
+.sqt .meter i{display:block;height:100%;width:0;background:#ffc83d;border-radius:4px;transition:width .08s}
 `;
 
 export function openSquat({ onDone } = {}) {
@@ -207,9 +246,9 @@ export function openSquat({ onDone } = {}) {
   document.body.append(el);
   const draw = p => `<svg viewBox="0 -12 200 310" aria-hidden="true">${drawChar(p, look)}</svg>`;
 
-  let A = null, raf = 0, wake = null, state = null, done = false;
+  let A = null, raf = 0, wake = null, state = null, done = false, M = null;
   const now = () => (A ? A.ctx.currentTime : performance.now() / 1000);
-  const close = () => { cancelAnimationFrame(raf); clearInterval(state && state.sched); try { speechSynthesis.cancel(); } catch {} if (A) A.ctx.close().catch(() => {}); if (wake) wake.release().catch(() => {}); el.remove(); };
+  const close = () => { cancelAnimationFrame(raf); clearInterval(state && state.sched); try { speechSynthesis.cancel(); } catch {} if (A) A.ctx.close().catch(() => {}); if (wake) wake.release().catch(() => {}); if (M) M.stop(); el.remove(); };
 
   // 시작 화면
   function intro() {
@@ -217,19 +256,32 @@ export function openSquat({ onDone } = {}) {
       <div class="stage">${draw(0)}</div>
       <div class="sub" style="font-size:17px;opacity:1;font-weight:900">10회 × 4세트 · 세트 사이 10초 휴식</div>
       <div class="pick"><button data-q="look" data-v="f" class="${look === "f" ? "on" : ""}">여성</button><button data-q="look" data-v="m" class="${look === "m" ? "on" : ""}">남성</button></div>
-      <div class="tip">🔊 소리를 켜 주세요${/iPhone|iPad/.test(navigator.userAgent) ? " (아이폰은 옆 무음 스위치도 꺼 주세요)" : ""}<br>운동하는 동안 화면이 꺼지지 않아요</div>
+      <div class="tip">📱 <b>폰을 가슴 앞에 들고</b> 앉았다 일어나면 자동으로 세요<br>🔊 소리를 켜 주세요${/iPhone|iPad/.test(navigator.userAgent) ? " (아이폰은 옆 무음 스위치도 꺼 주세요)" : ""}<br>운동하는 동안 화면이 꺼지지 않아요</div>
       <div class="btns"><button class="btn" data-q="start">시작하기</button></div>`;
   }
   intro();
 
+  function onRep() {
+    const s = state;
+    if (!s || s.phase !== "set" || s.paused || !s.sensor || s.cnt >= REPS) return;
+    s.cnt++; s.lastRep = now();
+    say(KOR[s.cnt - 1], voiceOn);
+    if (A && soundOn) A.I.beep(A.ctx.currentTime, s.cnt === REPS ? 1320 : 880);
+  }
   function startAll() {
+    M = makeMotion(onRep);
+    try {
+      if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function") {
+        DeviceMotionEvent.requestPermission().then(r => { if (r === "granted") M.start(); }).catch(() => {});   // 아이폰: 버튼을 누를 때 허락받기
+      } else M.start();
+    } catch {}
     A = makeAudio();
     if (A) A.ctx.resume();
     say("준비", voiceOn);                      // 버튼을 누르는 순간 실제로 한 번 말해서 목소리를 깨워 둔다
     try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => { wake = w; }).catch(() => {}); } catch {}
     const styles = shuffle([...STYLES]);
     const roots = shuffle([-5, -3, 0, 2, 3]);  // E·F#·A·B·C 근처에서 세트마다 다른 조
-    state = { phase: "count", t0: now(), set: 0, styles, roots, said: -1, paused: false, sched: 0, nextStep: 0 };
+    state = { phase: "count", t0: now(), set: 0, styles, roots, said: -1, paused: false, sched: 0, nextStep: 0, sensor: false, cnt: 0, lastRep: 0 };
     renderRun();
     loop();
   }
@@ -238,7 +290,7 @@ export function openSquat({ onDone } = {}) {
   function scheduleMusic() {
     if (!A || state.phase !== "set") return;
     const S = state.styles[state.set], root = state.roots[state.set] - 12, t0 = state.t0;
-    const ahead = A.ctx.currentTime + 0.15, total = REPS * 16;
+    const ahead = A.ctx.currentTime + 0.15, total = state.sensor ? Infinity : REPS * 16;
     while (state.nextStep < total && t0 + state.nextStep * STEP < ahead) {
       const n = state.nextStep, s = n % 16, swing = S.swing && s % 2 ? STEP * 0.18 : 0, t = t0 + n * STEP + swing;
       if (soundOn) {
@@ -262,6 +314,7 @@ export function openSquat({ onDone } = {}) {
       <div class="stage"><div id="sq-fig"></div><div class="big" id="sq-big"></div><div class="msg" id="sq-msg"></div></div>
       <div class="sub" id="sq-sub"></div>
       <div class="dots" id="sq-dots">${Array.from({ length: REPS }, () => "<i></i>").join("")}</div>
+      <div class="meter" id="sq-mw">움직임 <b><i id="sq-meter"></i></b></div>
       <div class="sets" id="sq-sets">${Array.from({ length: SETS }, () => "<i></i>").join("")}</div>
       <div class="btns"><button class="btn g2" data-q="pause" id="sq-pause">일시정지</button></div>
       <div class="row" style="display:flex;gap:16px;justify-content:center;margin-top:10px"><button class="tg" data-q="snd" id="sq-snd"></button><button class="tg" data-q="vc" id="sq-vc"></button></div>`;
@@ -283,7 +336,23 @@ export function openSquat({ onDone } = {}) {
       const k = Math.floor(e);
       if (k !== s.said && k < 3) { s.said = k; say(["쓰리", "투", "원"][k], voiceOn); if (A && soundOn) A.I.beep(A.ctx.currentTime, 660); }
       msg = ["3", "2", "1"][Math.min(k, 2)]; sub = "준비하세요!";
-      if (e >= 3) { s.phase = "set"; s.t0 = s.t0 + 3; s.said = -1; s.nextStep = 0; say("시작!", voiceOn); if (A && soundOn) A.I.beep(s.t0, 990); }
+      if (e >= 3) {
+        s.sensor = !!(M && M.events > 5);              // 센서 신호가 들어오면 실제 움직임으로 센다
+        if (M) M.on = s.sensor;
+        s.phase = "set"; s.t0 = s.t0 + 3; s.said = -1; s.nextStep = 0; s.cnt = 0; s.lastRep = s.t0;
+        say("시작!", voiceOn); if (A && soundOn) A.I.beep(s.t0, 990);
+      }
+    } else if (s.phase === "set" && s.sensor) {          // 실제 움직임으로 세기
+      scheduleMusic();
+      const f = (e % REP_SEC) / REP_SEC;
+      p = (1 - Math.cos(2 * Math.PI * f)) / 2;           // 캐릭터는 속도 안내용으로 계속 움직임
+      reps = s.cnt; big = reps ? String(reps) : "";
+      sub = now() - s.lastRep > 6 ? "폰을 가슴 앞에 들고 앉았다 일어나 보세요" : s.styles[s.set].name;
+      if (s.cnt >= REPS) {
+        s.set++;
+        if (s.set >= SETS) { finish(); return; }
+        s.phase = "rest"; s.t0 = now(); s.said = -1; s.cnt = 0; say("휴식", voiceOn);
+      }
     } else if (s.phase === "set") {
       scheduleMusic();
       const rep = Math.floor(e / REP_SEC), f = (e % REP_SEC) / REP_SEC;
@@ -300,7 +369,7 @@ export function openSquat({ onDone } = {}) {
       const left = Math.ceil(REST - e);
       msg = String(Math.max(left, 0)); sub = `잘했어요! 다음은 ${s.set + 1}세트`; reps = REPS;
       if (left <= 3 && left >= 1 && left !== s.said) { s.said = left; say(["원", "투", "쓰리"][left - 1], voiceOn); if (A && soundOn) A.I.beep(A.ctx.currentTime, 660); }
-      if (e >= REST) { s.phase = "set"; s.t0 = s.t0 + REST; s.said = -1; s.nextStep = 0; say("시작!", voiceOn); if (A && soundOn) A.I.beep(s.t0, 990); }
+      if (e >= REST) { s.phase = "set"; s.t0 = s.t0 + REST; s.said = -1; s.nextStep = 0; s.cnt = 0; s.lastRep = s.t0; say("시작!", voiceOn); if (A && soundOn) A.I.beep(s.t0, 990); }
     }
     const fig = $("#sq-fig"); if (!fig) return;
     fig.innerHTML = draw(p);
@@ -308,6 +377,9 @@ export function openSquat({ onDone } = {}) {
     $("#sq-set").textContent = `${Math.min(s.set + 1, SETS)}세트 / ${SETS}`;
     el.querySelectorAll("#sq-dots i").forEach((d, i) => d.classList.toggle("on", i < reps));
     el.querySelectorAll("#sq-sets i").forEach((d, i) => { d.classList.toggle("on", i < s.set); d.classList.toggle("now", i === s.set); });
+    const mt = $("#sq-meter"), mw = $("#sq-mw");
+    if (mt && M) mt.style.width = Math.min(100, M.level / 3 * 100).toFixed(0) + "%";
+    if (mw && s.phase !== "count" && !s.sensor) mw.textContent = "센서를 쓸 수 없어 박자에 맞춰 세요 (자동 체크 안 됨)";
   }
 
   function finish() {
@@ -318,9 +390,10 @@ export function openSquat({ onDone } = {}) {
     el.innerHTML = `<div class="top"><span class="setlbl">🏋️ 스쿼트 같이 하기</span><span></span></div>
       <div class="stage">${draw(0)}<div class="msg" style="top:8%;font-size:min(14vw,64px)">완료! 🎉</div></div>
       <div class="sub" style="font-size:17px;opacity:1;font-weight:900">스쿼트 40회를 해냈어요!</div>
-      <div class="sub">오늘의 운동이 자동으로 체크돼요 ✓</div>
+      <div class="sub">${state.sensor ? "오늘의 운동이 자동으로 체크돼요 ✓" : "움직임 센서로 세지 못해서 자동 체크는 안 돼요.<br>운동했다면 운동 버튼을 직접 눌러 주세요."}</div>
       <div class="btns" style="margin-top:12px"><button class="btn" data-q="close">닫기</button></div>`;
-    try { onDone && onDone(); } catch (e) { console.error(e); }
+    if (M) M.stop();
+    try { if (state.sensor && onDone) onDone(); } catch (e) { console.error(e); }
   }
 
   el.addEventListener("click", e => {
