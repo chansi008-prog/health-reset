@@ -45,6 +45,21 @@ function sneaker(x, rot, c, ink) {
     <path d="M-16 11.5H16V14Q16 18 12 18H-12Q-16 18 -16 14Z" fill="#fff" stroke="${ink}" stroke-width="3.2" stroke-linejoin="round"/>
     <path d="M-5 -2H5M-6 2.5H6" stroke="${ink}" stroke-width="2" stroke-linecap="round"/></g>`;
 }
+// 남성: 짧은 스포츠머리, 정수리가 위로 삐죽삐죽
+function spikyHair(hx, hy, R, col, ink) {
+  const at = (deg, r) => [hx + r * Math.cos(deg * Math.PI / 180), hy + r * Math.sin(deg * Math.PI / 180)];
+  const pts = [at(-168, R + 1)];
+  const n = 7, a0 = -158, a1 = -22;
+  for (let i = 0; i <= n * 2; i++) {
+    const a = a0 + (a1 - a0) * i / (n * 2);
+    const peak = i % 2 === 1, mid = 1 - Math.abs(i / (n * 2) - 0.5) * 2;   // 가운데 가시가 더 높음
+    pts.push(at(a, peak ? R + 9 + 6 * mid : R + 1));
+  }
+  pts.push(at(-12, R + 1));
+  const d = "M" + pts.map(q => `${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join("L") +
+    `Q${hx + 14} ${hy - 20} ${hx} ${hy - 17}Q${hx - 14} ${hy - 20} ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}Z`;
+  return `<path d="${d}" fill="${col}" stroke="${ink}" stroke-width="3.2" stroke-linejoin="round"/>`;
+}
 function drawChar(p, g) {
   const P = pose(p), L = LOOK[g] || LOOK.f, ink = "#3b2f2f";
   const limb = (d, w, col) =>
@@ -74,7 +89,7 @@ function drawChar(p, g) {
   const hairFront = g === "f"
     ? `<path d="M${hx - R} ${hy - 1}Q${hx - R + 2} ${hy - R - 6} ${hx} ${hy - R - 3}Q${hx + R - 2} ${hy - R - 6} ${hx + R} ${hy - 1}Q${hx + 18} ${hy - 16} ${hx + 4} ${hy - 12}Q${hx - 10} ${hy - 20} ${hx - R} ${hy - 1}Z" fill="${L.hair}" stroke="${ink}" stroke-width="3.2" stroke-linejoin="round"/>
        <circle cx="${hx + 20}" cy="${hy - 24}" r="6" fill="${L.top}" stroke="${ink}" stroke-width="2.6"/>`
-    : `<path d="M${hx - R} ${hy - 2}Q${hx - R} ${hy - R - 8} ${hx - 4} ${hy - R - 5}Q${hx + 6} ${hy - R - 12} ${hx + 14} ${hy - R - 4}Q${hx + R + 2} ${hy - R + 2} ${hx + R} ${hy - 2}Q${hx + 22} ${hy - 14} ${hx + 8} ${hy - 13}Q${hx - 8} ${hy - 10} ${hx - R} ${hy - 2}Z" fill="${L.hair}" stroke="${ink}" stroke-width="3.2" stroke-linejoin="round"/>`;
+    : spikyHair(hx, hy, R, L.hair, ink);
   const brows = g === "m" && p > 0.4 ? `<path d="M${hx - 15} ${hy - 5}l9 3M${hx + 15} ${hy - 5}l-9 3" stroke="${ink}" stroke-width="2.6" stroke-linecap="round"/>` : "";
   const lashes = g === "f" ? `<path d="M${hx - 15} ${hy + 1}l-3 -3M${hx + 15} ${hy + 1}l3 -3" stroke="${ink}" stroke-width="2" stroke-linecap="round"/>` : "";
   const mouth = p > 0.6
