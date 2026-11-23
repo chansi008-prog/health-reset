@@ -183,7 +183,7 @@ function say(text, on) {
   if (!on || !("speechSynthesis" in window)) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "ko-KR"; u.rate = 1.2; u.pitch = 1.05; u.volume = 1;
+    u.lang = "ko-KR"; u.rate = 0.96; u.pitch = 1.05; u.volume = 1;
     if (koVoice) u.voice = koVoice;
     if (speechSynthesis.paused) speechSynthesis.resume();
     speechSynthesis.speak(u);
