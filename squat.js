@@ -171,6 +171,17 @@ const STYLES = [
 ];
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
+// 구형 아이폰: 소리 없는 오디오를 계속 틀어 두면 무음 스위치를 켜도 웹 소리가 나온다
+function keepAlive() {
+  const sr = 8000, n = sr / 2, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+  const w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+  const a = new Audio(URL.createObjectURL(new Blob([b], { type: "audio/wav" })));
+  a.loop = true; a.setAttribute("playsinline", ""); a.play().catch(() => {});
+  return a;
+}
+
 // ── 목소리 ──
 // 폰 내장 음성(무료). 아이폰은 버튼을 누를 때 한 번 말을 해야 이후에도 말할 수 있다.
 // 앞의 말을 끊고(cancel) 바로 말하면 일부 폰에서 아예 안 나와서, 끊지 않고 이어서 말한다.
@@ -262,9 +273,9 @@ export function openSquat({ onDone } = {}) {
   document.body.append(el);
   const draw = p => `<svg viewBox="0 -12 200 310" aria-hidden="true">${drawChar(p, look)}</svg>`;
 
-  let A = null, raf = 0, wake = null, state = null, done = false, M = null;
+  let A = null, raf = 0, wake = null, state = null, done = false, M = null, keep = null;
   const now = () => (A ? A.ctx.currentTime : performance.now() / 1000);
-  const close = () => { cancelAnimationFrame(raf); clearInterval(state && state.sched); try { speechSynthesis.cancel(); } catch {} if (A) A.ctx.close().catch(() => {}); if (wake) wake.release().catch(() => {}); if (M) M.stop(); el.remove(); };
+  const close = () => { cancelAnimationFrame(raf); clearInterval(state && state.sched); try { speechSynthesis.cancel(); } catch {} if (A) A.ctx.close().catch(() => {}); if (wake) wake.release().catch(() => {}); if (M) M.stop(); if (keep) { keep.pause(); keep.src = ""; } try { if (navigator.audioSession) navigator.audioSession.type = "auto"; } catch {} el.remove(); };
 
   // 시작 화면
   function intro() {
@@ -285,14 +296,17 @@ export function openSquat({ onDone } = {}) {
     if (A && soundOn) A.I.beep(A.ctx.currentTime, s.cnt === REPS ? 1320 : 880);
   }
   function startAll() {
+    // 아이폰은 무음(진동) 모드면 웹 소리(음악·띵)가 꺼진다. 목소리는 나와서 음악만 안 나오는 것처럼 보인다.
+    // '재생' 모드로 바꿔 무음 스위치와 상관없이 나오게 한다(신형 iOS). 구형은 조용한 소리를 함께 틀어 같은 효과를 낸다.
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; else keep = keepAlive(); } catch {}
+    A = makeAudio();                           // 버튼을 누른 그 순간에 소리를 깨워 둔다 (센서 허락 창보다 먼저)
+    if (A) A.ctx.resume();
     M = makeMotion(onRep);
     try {
       if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function") {
         DeviceMotionEvent.requestPermission().then(r => { if (r === "granted") M.start(); }).catch(() => {});   // 아이폰: 버튼을 누를 때 허락받기
       } else M.start();
     } catch {}
-    A = makeAudio();
-    if (A) A.ctx.resume();
     say("준비", voiceOn);                      // 버튼을 누르는 순간 실제로 한 번 말해서 목소리를 깨워 둔다
     try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => { wake = w; }).catch(() => {}); } catch {}
     const styles = shuffle([...STYLES]);
@@ -346,9 +360,17 @@ export function openSquat({ onDone } = {}) {
   }
   const $ = id => el.querySelector(id);
 
+  let lastWake = 0;
+  function wakeAudio() {
+    if (!A || !state || state.paused || A.ctx.state === "running") return;
+    const t = performance.now(); if (t - lastWake < 800) return;
+    lastWake = t; A.ctx.resume().catch(() => {});
+  }
+  el.addEventListener("pointerdown", wakeAudio);
   function loop() {
     raf = requestAnimationFrame(loop);
     if (!state || state.paused) return;
+    wakeAudio();
     const s = state, e = now() - s.t0;
     let p = 0, big = "", msg = "", sub = "", reps = 0;
     if (s.phase === "count") {                           // 쓰리 · 투 · 원
